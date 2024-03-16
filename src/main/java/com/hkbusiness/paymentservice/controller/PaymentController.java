@@ -1,0 +1,82 @@
+package com.hkbusiness.paymentservice.controller;
+
+import com.hkbusiness.paymentservice.model.dto.Order;
+import com.hkbusiness.paymentservice.service.PaymentService;
+import com.paypal.api.payments.Links;
+import com.paypal.api.payments.Payment;
+import com.paypal.base.rest.PayPalRESTException;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.view.RedirectView;
+@Controller
+@RequiredArgsConstructor
+@Slf4j
+public class PaymentController {
+    private final PaymentService paymentService;
+
+
+    @GetMapping("/payment/order/{orderNumber}")
+    public String home(@PathVariable String orderNumber, Model model){
+        Order order = paymentService.order(orderNumber);
+        Double amount = paymentService.orderAmount(order);
+        String description = "Payment for order number: "+orderNumber;
+        model.addAttribute("amount",amount);
+        model.addAttribute("description", description);
+        model.addAttribute("orderNumber", orderNumber);
+        return "index";
+    }
+    @PostMapping("/payment/create/{orderNumber}")
+    public RedirectView createPayment(
+            @PathVariable("orderNumber") String orderNumber,
+            @RequestParam("method") String method,
+            @RequestParam("amount") String amount,
+            @RequestParam("currency") String currency,
+            @RequestParam("description") String description
+    ){
+        try {
+            String cancelUrl = "http://localhost:9106/payment/cancel";
+            String successUrl = "http://localhost:9106/payment/success";
+            Payment payment = paymentService.createPayment(
+                    Double.valueOf(amount),currency,method,"sale", description,
+                    cancelUrl,successUrl);
+
+            for(Links links: payment.getLinks()){
+                if (links.getRel().equals("approval_url")){
+                    return new RedirectView(links.getHref());
+                }
+            }
+        }catch (PayPalRESTException e){
+            log.error("Error occurred::",e);
+        }
+        return new RedirectView("/payment/error/"+orderNumber);
+    }
+    @GetMapping("/payment/success")
+    public  String paymentSuccess(@RequestParam("paymentId") String paymentId, @RequestParam("PayerID") String payerId){
+        try {
+            Payment payment = paymentService.executePayment(paymentId,payerId);
+            if (payment.getState().equals("approved")){
+                return "paymentSuccess";
+            }
+        }catch (PayPalRESTException e){
+            log.error("Error occurred::",e);
+        }
+        return "paymentSuccess";
+    }
+    @GetMapping("/payment/cancel")
+    public  String paymentCancel(){
+        return "paymentCancel";
+    }
+    @GetMapping("/payment/error/{orderNumber}")
+    public  String paymentError(@PathVariable String orderNumber, Model model){
+        model.addAttribute("orderNumber", orderNumber);
+        return "paymentError";
+    }
+
+
+}
