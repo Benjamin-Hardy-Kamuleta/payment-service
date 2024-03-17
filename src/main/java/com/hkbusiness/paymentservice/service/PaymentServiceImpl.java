@@ -1,8 +1,10 @@
 package com.hkbusiness.paymentservice.service;
 
 import com.hkbusiness.paymentservice.config.feign.OrderClient;
+import com.hkbusiness.paymentservice.model.PaymentEntity;
 import com.hkbusiness.paymentservice.model.dto.Order;
 import com.hkbusiness.paymentservice.model.dto.OrderItem;
+import com.hkbusiness.paymentservice.repository.PaymentRepository;
 import com.paypal.api.payments.*;
 import com.paypal.base.rest.APIContext;
 import com.paypal.base.rest.PayPalRESTException;
@@ -12,12 +14,15 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
     private final APIContext apiContext;
+    private final PaymentRepository paymentRepository;
     private final OrderClient orderClient;
+   @Override
     public Payment createPayment(
             Double total,
             String currency,
@@ -54,7 +59,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         return payment.create(apiContext);
     }
-
+    @Override
     public Payment executePayment(String paymentId, String payerId) throws PayPalRESTException {
         Payment payment = new Payment();
         payment.setId(paymentId);
@@ -65,10 +70,27 @@ public class PaymentServiceImpl implements PaymentService {
         return payment.execute(apiContext,paymentExecution);
 
     }
+    @Override
     public Order order(String orderNumber){
         return orderClient.orders().stream().filter(order -> order.getOrderNumber().equals(orderNumber))
-                .findFirst().orElseThrow();
+                .findFirst().orElseThrow(()-> new RuntimeException("Order with orderNumber "+orderNumber+" not found"));
     }
+
+    @Override
+    public boolean isOrderExist(String orderNumber) {
+      return orderClient.orders().stream().anyMatch(order -> order.getOrderNumber().equals(orderNumber));
+    }
+
+    @Override
+    public List<PaymentEntity> payments() {
+        return paymentRepository.findAll();
+    }
+
+    @Override
+    public PaymentEntity savePayment(PaymentEntity paymentEntity) {
+        return paymentRepository.save(paymentEntity);
+    }
+
     public Double orderAmount(Order order){
         Double amount = 0.0;
         List<OrderItem> orderItems = order.getOrderItems();
